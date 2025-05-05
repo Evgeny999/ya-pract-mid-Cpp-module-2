@@ -30,17 +30,32 @@ scan(std::string_view input, std::string_view format) {
 
   size_t i = 0;
 
-  ((details::parse_value_with_format<Ts>(input_values[i], format_values[i++])),
-   ...);
-  /*for (size_t i = 0; i < input_values.size(); ++i) {
-    auto value_format = details::parse_value_with_format<std::string>(
-        input_values[i], format_values[i]);
-    if (!value_format.has_value()) {
-      return std::unexpected(sources_vectors.error());
-    }
-  }*/
+  std::tuple<std::expected<Ts, details::scan_error>...> parsed_values;
 
-  return std::unexpected(details::scan_error{"Dumb implementation"});
+  auto parse_values = [&]<size_t... Ints>(std::index_sequence<Ints...>) {
+    ((std::get<Ints>(parsed_values) = details::parse_value_with_format<Ts>(
+          input_values[Ints], format_values[Ints])),
+     ...);
+
+    bool err_flag = (... || !std::get<Ints>(parsed_values).has_value());
+
+    if (err_flag) {
+      std::string error_text;
+      ((!std::get<Ints>(parsed_values)
+            ? (error_text +=
+               std::get<Ints>(parsed_values).error().message + "; ")
+            : ""),
+       ...);
+
+      // return std::unexpected(details::scan_error{std::move(error_text)});
+    }
+
+    return std::expected<details::scan_result<Ts...>, details::scan_error>(
+        details::scan_result<Ts...>{
+            std::tuple{std::get<Ints>(parsed_values).value()...}});
+  };
+
+  parse_values(std::make_index_sequence<sizeof...(Ts)>{});
 }
 
 } // namespace stdx
