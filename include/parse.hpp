@@ -11,57 +11,59 @@
 
 namespace stdx::details {
 
-template <typename T> T parse_value(int input_value) {
-  return static_cast<T>(input_value);
-}
-
-template <typename T> T parse_value(std::string &input_value) {
-  T t;
-  return t;
-}
-
-template <typename T> T parse_value(unsigned long input_value) {
-  return static_cast<T>(input_value);
-}
-
-template <typename T> T parse_value(float input_value) {
-  return static_cast<T>(input_value);
-}
-
-template <typename T>
-T parse_value(float input_value)
-  requires requires(T &t) { t.size(); }
-{
-  return static_cast<T>(input_value);
+template <typename T1, typename T2> T2 parse_value(T1 input_value) {
+  if constexpr (std::is_same_v<std::string, std::remove_cv_t<T1>> &&
+                std::is_same_v<std::string, std::remove_cv_t<T2>>) {
+    // source: string -> destination: string
+    return input_value;
+  } else if constexpr (std::is_same_v<std::string, std::remove_cv_t<T1>> &&
+                       std::is_same_v<std::string_view, std::remove_cv_t<T2>>) {
+    // source: string -> destination: string_view
+    return std::string_view{input_value};
+  } else if constexpr (std::is_same_v<std::string_view, std::remove_cv_t<T1>> &&
+                       std::is_same_v<std::string_view, std::remove_cv_t<T2>>) {
+    // source: string_view -> destination: string
+    return input_value;
+  } else if constexpr (std::is_same_v<std::string_view, std::remove_cv_t<T1>> &&
+                       std::is_same_v<std::string, std::remove_cv_t<T2>>) {
+    // source: string_view -> destination: string
+    return std::string{input_value};
+  } else if constexpr (std::is_same_v<std::string, std::remove_cv_t<T1>>) {
+    // source: string -> destination: T2 (numeric)
+    auto input = stod(input_value);
+    return static_cast<T2>(input);
+  } else if constexpr (std::is_same_v<std::string_view, std::remove_cv_t<T1>>) {
+    // source: string_view -> destination: T2 (numeric)
+    auto input = stod(input_value);
+    return static_cast<T2>(std::string{input});
+  } else if constexpr (std::is_same_v<std::string, std::remove_cv_t<T2>>) {
+    // source: T1 (numeric) -> destination: string
+    return std::to_string(input_value);
+  } else if constexpr (std::is_same_v<std::string_view, std::remove_cv_t<T2>>) {
+    // source: T1 (numeric) -> destination: string_view
+    return std::string_view{std::to_string(input_value)};
+  } else {
+    // source: T1 (numeric) -> destination: T2 (numeric)
+    return static_cast<T2>(input_value);
+  }
 }
 
 // Функция для парсинга значения с учетом спецификатора формата
 template <typename T>
 std::expected<T, scan_error> parse_value_with_format(std::string_view input,
                                                      std::string_view fmt) {
-
-  std::cout << "input = " << input << '\n' << "fmt" << fmt << '\n';
-
-  if constexpr (std::is_same<std::string, T>::value) {
-
-  } else {
-    if (fmt == "%d") {
-      auto input_value = std::stoi(std::string{input});
-      auto parsed_value = parse_value<T>(input_value);
-      return parsed_value;
-    } else if (fmt == "%s") {
-      auto input_value = std::string{input};
-      auto parsed_value = parse_value<T>(input_value);
-      return parsed_value;
-    } else if (fmt == "%u") {
-      auto input_value = std::stoul(std::string{input});
-      auto parsed_value = parse_value<T>(input_value);
-      return parsed_value;
-    } else if (fmt == "%f") {
-      auto input_value = std::stof(std::string{input});
-      auto parsed_value = parse_value<T>(input_value);
-      return parsed_value;
-    }
+  if (fmt == "%d") {
+    auto input_value = std::stoi(std::string{input});
+    return parse_value<int, T>(input_value);
+  } else if (fmt == "%s" || fmt == "") {
+    auto input_value = std::string{input};
+    return parse_value<std::string, T>(input_value);
+  } else if (fmt == "%u") {
+    auto input_value = std::stoul(std::string{input});
+    return parse_value<unsigned, T>(input_value);
+  } else if (fmt == "%f") {
+    auto input_value = std::stof(std::string{input});
+    return parse_value<float, T>(input_value);
   }
 
   return std::unexpected(scan_error{"Not supported format specifier"});
